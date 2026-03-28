@@ -208,15 +208,15 @@ class InteractiveBond(Entity):
             current_rwmol = backup 
 
 def get_bond_offsets(p1, p2, order):
-    if order == 1: return [Vec3(0,0,0)]
+    if order <= 1: return [Vec3(0,0,0)]
     direction = (p2 - p1).normalized()
-    up = Vec3(0, 1, 0)
-    if abs(direction.dot(up)) > 0.99: up = Vec3(1, 0, 0)
-    perp = direction.cross(up).normalized()
-    
-    gap = 0.40 # Gap width for multiple cylinders
-    if order == 2: return[perp * (gap/2), -perp * (gap/2)]
-    return [Vec3(0,0,0), perp * gap, -perp * gap]
+    perp = direction.cross(Vec3(0, 0, 1)).normalized()
+    if perp.length() < 0.1: perp = direction.cross(Vec3(0, 1, 0)).normalized()
+    gap = 0.22 # Gap width for multiple cylinders
+
+    if order == 2: return[perp * (gap*0.9), -perp * (gap*0.9)]
+    if order == 3: return [Vec3(0,0,0), perp * (gap*1.5), -perp * (gap*1.5)]
+    return [Vec3(0,0,0)]
 
 # ==========================================
 # FLAWLESS 3D RENDERING ENGINE
@@ -257,24 +257,31 @@ def render_molecule():
         order = int(bond.GetBondTypeAsDouble())
         c1, c2 = ATOM_COLORS.get(current_rwmol.GetAtomWithIdx(idx1).GetSymbol()), ATOM_COLORS.get(current_rwmol.GetAtomWithIdx(idx2).GetSymbol())
 
+        visual_thickness = BOND_THICKNESS if order == 1 else BOND_THICKNESS * 0.6
+
         offsets = get_bond_offsets(p1, p2, order)
         for offset in offsets:
-            mid = (p1 + p2) * 0.5
-            for start, end, col in[(p1, mid, c1), (mid, p2, c2)]:
-                dist = (end - start).length()
+            start_offset = p1 + offset
+            end_offset = p2 + offset
+            mid_offset = (start_offset + end_offset) * 0.5
+
+            start, end = p1 + offset, p2 + offset
+            mid = (start + end) * 0.5
+            for seg_start, seg_end, col in[(start_offset, mid_offset, c1), (mid_offset, end_offset, c2)]:
+                dist = (seg_end - seg_start).length()
                 
                 # Z-Aligned Visual Cylinder
                 b_vis = Entity(model=copy(cylinder_mesh), color=col, parent=molecule_pivot)
-                b_vis.position = (start + end + offset * 2) * 0.5
-                b_vis.scale = Vec3(BOND_THICKNESS, BOND_THICKNESS, dist) # Scaled on Z
-                b_vis.look_at(end + offset)
+                b_vis.position = (seg_start + seg_end) * 0.5
+                b_vis.scale = Vec3(visual_thickness, visual_thickness, dist) # Scaled on Z
+                b_vis.look_at(seg_end)
                 current_entities.append(b_vis)
 
                 # Z-Aligned Hitbox
                 b_hit = InteractiveBond(idx1, idx2, order, parent=molecule_pivot, collider='box', color=color.clear)
-                b_hit.position = b_vis.position
-                b_hit.scale = Vec3(0.5, 0.5, dist) 
-                b_hit.look_at(end + offset)
+                b_hit.position = (p1 + p2) * 0.5
+                b_hit.scale = Vec3(0.5, 0.5, (p2 - p1).length() * 1.1)
+                b_hit.look_at(p2)
                 current_entities.append(b_hit)
 
     # 3. Render Hydrogens
