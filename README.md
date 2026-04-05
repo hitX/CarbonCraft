@@ -31,8 +31,8 @@ CarbonCraft is a visual molecule builder that lets you assemble structures in a 
 ### Clone with Git
 
 ```bash
-git clone https://github.com/<your-org-or-user>/Hydrocarbon_Derivatives.git
-cd Hydrocarbon_Derivatives
+git clone https://github.com/<your-org-or-user>/CarbonCraft.git
+cd CarbonCraft
 ```
 
 ### Download ZIP
@@ -55,7 +55,7 @@ cd Hydrocarbon_Derivatives
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python Main.py
+python main.py
 ```
 
 ### macOS / Linux
@@ -64,10 +64,10 @@ python Main.py
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python Main.py
+python main.py
 ```
 
-If launch is successful, a window titled **Interactive MolBuilder 3D** should appear.
+If launch is successful, a window titled **CarbonCraft** should appear.
 
 ## Development Setup
 
@@ -75,13 +75,7 @@ If launch is successful, a window titled **Interactive MolBuilder 3D** should ap
 2. Clone your fork locally.
 3. Create and activate a virtual environment.
 4. Install dependencies from [requirements.txt](requirements.txt).
-5. Run the app with `python Main.py`.
-
-Optional developer tools:
-
-```bash
-pip install black ruff pytest
-```
+5. Run the app with `python main.py`.
 
 ## Contributing
 
@@ -99,7 +93,7 @@ git checkout -b feature/short-description
 3. Verify the app still runs.
 
 ```bash
-python Main.py
+python main.py
 ```
 
 4. Include or update tests where practical.
@@ -128,17 +122,32 @@ Please open a GitHub issue and include:
 - Steps to reproduce
 - Screenshot or short recording if the issue is visual
 
-## Project Structure
+## Packaging (Windows executable via PyInstaller)
 
-```text
-Hydrocarbon_Derivatives/
-|-- Main.py
-|-- README.md
-|-- LICENSE
-|-- requirements.txt
-|-- textures/
-|-- UI/
+You can build a Windows executable using PyInstaller. This repository includes helper scripts in `scripts/` to run the exact command we use for packaging.
+
+PowerShell
+
+Open PowerShell in the repository root and run:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force  # only if scripts are blocked
+.\scripts\build_pyinstaller.ps1
 ```
+
+Command Prompt (cmd)
+
+Open a Command Prompt in the repository root and run:
+
+```cmd
+scripts\build_pyinstaller.bat
+```
+
+Notes and troubleshooting
+
+- If PowerShell refuses to run scripts, setting the `CurrentUser` policy to `RemoteSigned` (as shown above) is a common, user-scoped solution.
+- If PyInstaller fails to include a dependency at runtime, add it to the `--hidden-import` list in the build scripts.
+- After a successful build, the executable will be under the `dist\CarbonCraft` folder.
 
 ## License
 
