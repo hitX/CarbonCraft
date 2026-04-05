@@ -4,45 +4,56 @@ import pubchempy as pcp
 from ursina import *
 from rdkit import Chem
 from rdkit.Chem import AllChem
-
 # ==========================================
 # APP & STUDIO LIGHTING
 # ==========================================
 app = Ursina(title='Interactive MolBuilder 3D', size=(1600, 900))
 window.color = color.hex('#5A5A5A') # Mid-grey studio background
+window.icon = r"textures/ursina.ico"
 
-# Matte lighting to create soft, realistic plastic shadows
-AmbientLight(color=color.rgba(255, 255, 255, 130))
-DirectionalLight(y=3, z=-3, shadows=True, rotation=(30, -30, 0), color=color.rgba(255,255,255, 180))
-DirectionalLight(y=-3, z=3, shadows=False, rotation=(-30, 30, 0), color=color.rgba(255,255,255, 60))
+# Matte lighting to create realistic plastic shadows
+AmbientLight(color=color.rgba(0.5, 0.5, 0.5, 0.1))
+DirectionalLight(y=3, z=-3, shadows=True, rotation=(30, -30, 0), color=color.white)
+DirectionalLight(y=-3, z=3, shadows=False, rotation=(-30, 30, 0), color=color.gray)
 
 def make_z_aligned_cylinder(segments=32):
-    """Extrudes a flawless cylinder along the Z-axis for perfect bond rendering"""
-    verts, tris = [],[]
+    """Extrudes a flawless cylinder along the Z-axis with correct 3D normals"""
+    verts, tris = [], []
     for i in range(segments):
         a0 = 2 * math.pi * i / segments
         a1 = 2 * math.pi * ((i + 1) % segments) / segments
         c0, s0, c1, s1 = math.cos(a0), math.sin(a0), math.cos(a1), math.sin(a1)
+        
         base = len(verts)
-        # Built along Z from -0.5 to 0.5
-        verts +=[Vec3(c0, s0, -0.5), Vec3(c1, s1, -0.5), Vec3(c1, s1, 0.5), Vec3(c0, s0, 0.5)]
-        tris +=[(base, base+1, base+2), (base, base+2, base+3)]
-    return Mesh(vertices=verts, triangles=tris)
+        # Vertices for one rectangular side (quad)
+        verts += [
+            Vec3(c0, s0, -0.5), Vec3(c1, s1, -0.5), 
+            Vec3(c1, s1, 0.5), Vec3(c0, s0, 0.5)
+        ]
+        # Two triangles making the quad
+        tris.extend([
+            base, base+1, base+2,      # Triangle 1
+            base, base+2, base+3       # Triangle 2
+        ])
+   
+    m = Mesh(vertices=verts, triangles=tris)
+    m.generate_normals() 
+    return m
 
 cylinder_mesh = make_z_aligned_cylinder()
 
 # Real CPK Colors (Verified Hex Codes)
 ATOM_COLORS = {
-    'C': color.hex('#2E343B'),  # Carbon: Dark Slate Grey
-    'H': color.hex('#FFFFFF'),  # Hydrogen: Pure White
-    'O': color.hex('#FF0D0D'),  # Oxygen: Red
-    'N': color.hex('#2233FF'),  # Nitrogen: Blue
-    'S': color.hex('#E6E600'),  # Sulfur: Yellow
-    'P': color.hex('#FF8000'),  # Phosphorus: Orange
-    'F': color.hex('#00FFEE'),  # Fluorine: Cyan
-    'Cl': color.hex('#1FF01F'), # Chlorine: Green
-    'Br': color.hex('#A62929'), # Bromine: Dark Red
-    'I':  color.hex('#9400D3'), # Iodine: Purple
+    'C': color.hex('#232323'),
+    'H': color.hex('#33476D'),
+    'O': color.hex("#CD2F24"),
+    'N': color.hex('#BBC6D5'),
+    'S': color.hex('#F1DD38'),
+    'P': color.hex('#67413C'),
+    'F': color.hex('#ADE6D5'),
+    'Cl': color.hex('#1FF01F'),
+    'Br': color.hex('#3A0023'), 
+    'I':  color.hex("#A013E6"),
 }
 
 # Physically Accurate Relative Sizes (Based on Van der Waals radii)
@@ -162,9 +173,6 @@ def add_group_to_atom(target_idx, group):
             atomic_num = Chem.GetPeriodicTable().GetAtomicNumber(group)
             new_idx = current_rwmol.AddAtom(Chem.Atom(atomic_num))
             current_rwmol.AddBond(target_idx, new_idx, Chem.BondType.SINGLE)
-        elif group == 'OH':
-            idx_o = current_rwmol.AddAtom(Chem.Atom(8))
-            current_rwmol.AddBond(target_idx, idx_o, Chem.BondType.SINGLE)
 
         if not try_update(f"Added {group}!"):
             current_rwmol = backup
@@ -180,8 +188,7 @@ ElementDispenser('P', 'P', ATOM_COLORS['P'], -0.13)
 ElementDispenser('F', 'F', ATOM_COLORS['F'], 0.00)
 ElementDispenser('Cl', 'Cl', ATOM_COLORS['Cl'], 0.13)
 ElementDispenser('Br', 'Br', ATOM_COLORS['Br'], 0.26)
-ElementDispenser('I', 'I', ATOM_COLORS['I'], 0.39)   
-ElementDispenser('OH', '-OH', color.hex('#B32424'), 0.54)
+ElementDispenser('I', 'I', ATOM_COLORS['I'], 0.39)
 
 # ==========================================
 # INTERACTIVE BOND SYSTEM
@@ -271,7 +278,7 @@ def render_molecule():
                 dist = (seg_end - seg_start).length()
                 
                 # Z-Aligned Visual Cylinder
-                b_vis = Entity(model=copy(cylinder_mesh), color=col, parent=molecule_pivot)
+                b_vis = Entity(model=copy(cylinder_mesh), color=col, parent=molecule_pivot, double_sided=True)
                 b_vis.position = (seg_start + seg_end) * 0.5
                 b_vis.scale = Vec3(visual_thickness, visual_thickness, dist) # Scaled on Z
                 b_vis.look_at(seg_end)
