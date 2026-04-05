@@ -7,7 +7,7 @@ from rdkit.Chem import AllChem
 # ==========================================
 # APP & STUDIO LIGHTING
 # ==========================================
-app = Ursina(title='Interactive MolBuilder 3D', size=(1600, 900))
+app = Ursina(title='CarbonCraft', size=(1600, 900))
 window.color = color.hex('#5A5A5A') # Mid-grey studio background
 window.icon = r"textures/ursina.ico"
 
