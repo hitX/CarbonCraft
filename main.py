@@ -76,15 +76,16 @@ molecule_pivot = Entity()
 # ==========================================
 # USER INTERFACE
 # ==========================================
-Entity(parent=camera.ui, model='quad', scale=(2, 0.12), position=(0, 0.44), color=color.rgba(0,0,0,0.8))
+Entity(parent=camera.ui, model='quad', scale=(2, 0.12), position=(0, 0.44, 0.2), color=color.rgba(0,0,0,0.8))
 iupac_text = Text(text=" IUPAC: Loading...", position=(-0.85, 0.48), scale=1.5, color=color.lime)
 smiles_text = Text(text="SMILES: ", position=(-0.85, 0.43), scale=1, color=color.light_gray)
+functional_groups_text = Text(text="Functional Groups: None", position=(-0.85, 0.38), scale=0.9, color=color.white)
 
 error_msg = Text(text="", position=(0, 0.2), origin=(0, 0), scale=2.5, color=color.clear)
 action_msg = Text(text="", position=(0, -0.2), origin=(0, 0), scale=2, color=color.clear)
 
 # Bottom Dock
-Entity(parent=camera.ui, model='quad', scale=(2, 0.2), position=(0, -0.4), color=color.rgba(0,0,0,0.8))
+Entity(parent=camera.ui, model='quad', scale=(2, 0.2), position=(0, -0.4, 0.2), color=color.rgba(0,0,0,0.8))
 Text(text="Drag Elements to Build:", position=(-0.85, -0.32), scale=1.2, color=color.white)
 
 def show_msg(msg, is_error=False):
@@ -109,6 +110,7 @@ def try_update(success_msg=""):
         
         smiles = Chem.MolToSmiles(current_rwmol)
         smiles_text.text = f"SMILES: {smiles}"
+        functional_groups_text.text = format_functional_groups(detect_functional_groups(current_rwmol.GetMol()))
         iupac_text.text = " IUPAC: Computing..."
         threading.Thread(target=fetch_iupac, args=(smiles,), daemon=True).start()
         
@@ -118,12 +120,45 @@ def try_update(success_msg=""):
         show_msg("INVALID VALENCY! (Blocked)", is_error=True)
         return False
 
+def get_contrast_text_color(bg_color):
+    # Keep labels readable regardless of the dispenser fill color.
+    luminance = (0.299 * bg_color.r) + (0.587 * bg_color.g) + (0.114 * bg_color.b)
+    return color.black if luminance > 0.55 else color.white
+
+FUNCTIONAL_GROUP_PATTERNS = [
+    ("Carboxylic acid", "C(=O)[OX2H1]"),
+    ("Ester", "C(=O)O[#6]"),
+    ("Amide", "C(=O)N"),
+    ("Aldehyde", "[CX3H1](=O)[#6]"),
+    ("Ketone", "[#6][CX3](=O)[#6]"),
+    ("Alcohol", "[OX2H][CX4]"),
+    ("Phenol", "c[OX2H]"),
+    ("Amine", "[NX3;H2,H1,H0;!$(NC=O)]"),
+    ("Nitrile", "C#N"),
+    ("Alkene", "C=C"),
+    ("Alkyne", "C#C"),
+    ("Halide", "[F,Cl,Br,I]"),
+]
+
+def detect_functional_groups(mol):
+    found_groups = []
+    for name, smarts in FUNCTIONAL_GROUP_PATTERNS:
+        pattern = Chem.MolFromSmarts(smarts)
+        if pattern is not None and mol.HasSubstructMatch(pattern):
+            found_groups.append(name)
+    return found_groups
+
+def format_functional_groups(groups):
+    if not groups:
+        return "Functional Groups: None detected"
+    return "Functional Groups: " + ", ".join(groups)
+
 # ==========================================
 # INFINITE DRAG & DROP (DISPENSER SYSTEM)
 # ==========================================
 class DragClone(Entity):
     def __init__(self, symbol, color_code, start_pos):
-        super().__init__(parent=camera.ui, model='circle', scale=(0.06, 0.06), position=(start_pos.x, start_pos.y), color=color_code)
+        super().__init__(parent=camera.ui, model='circle', scale=(0.06, 0.06), position=(start_pos.x, start_pos.y, -0.02), color=color_code)
         self.symbol = symbol
         self.dragging = True
 
@@ -155,10 +190,10 @@ class DragClone(Entity):
 
 class ElementDispenser(Entity):
     def __init__(self, symbol, label, color_code, x_pos):
-        super().__init__(parent=camera.ui, model='circle', scale=(0.06, 0.06), position=(x_pos, -0.42), color=color_code, collider='sphere')
+        super().__init__(parent=camera.ui, model='circle', scale=(0.06, 0.06), position=(x_pos, -0.42, -0.01), color=color_code, collider='sphere')
         self.symbol = symbol
         self.color_code = color_code
-        Text(parent=self, text=label, origin=(0,0), scale=12, color=color.white if symbol not in ['H', 'S'] else color.black)
+        Text(parent=self, text=label, origin=(0,0), scale=16, color=get_contrast_text_color(color_code))
         self.tooltip = Tooltip(f"Drag onto a 3D atom to add {label}")
 
     def input(self, key):
