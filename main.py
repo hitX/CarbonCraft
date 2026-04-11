@@ -2,59 +2,86 @@ import math
 import threading
 import pubchempy as pcp
 from ursina import *
+from ursina.shaders import lit_with_shadows_shader
 from rdkit import Chem
 from rdkit.Chem import AllChem
-# ==========================================
+
 # APP & STUDIO LIGHTING
-# ==========================================
-app = Ursina(title='CarbonCraft', size=(1600, 900))
-window.color = color.hex('#5A5A5A') # Mid-grey studio background
+app = Ursina(title='CarbonCraft', size=(1600, 900), borderless=False, vsync=True)
+window.color = color.black 
 window.icon = r"textures/ursina.ico"
 
-# Matte lighting to create realistic plastic shadows
-AmbientLight(color=color.rgba(0.5, 0.5, 0.5, 0.1))
-DirectionalLight(y=3, z=-3, shadows=True, rotation=(30, -30, 0), color=color.white)
-DirectionalLight(y=-3, z=3, shadows=False, rotation=(-30, 30, 0), color=color.gray)
-
-def make_z_aligned_cylinder(segments=32):
+def make_z_aligned_cylinder(segments=64):
     """Extrudes a flawless cylinder along the Z-axis with correct 3D normals"""
-    verts, tris = [], []
+    verts = []
+    tris = []
+    # Build shared vertex rings for smooth normals
     for i in range(segments):
-        a0 = 2 * math.pi * i / segments
-        a1 = 2 * math.pi * ((i + 1) % segments) / segments
-        c0, s0, c1, s1 = math.cos(a0), math.sin(a0), math.cos(a1), math.sin(a1)
-        
-        base = len(verts)
-        # Vertices for one rectangular side (quad)
-        verts += [
-            Vec3(c0, s0, -0.5), Vec3(c1, s1, -0.5), 
-            Vec3(c1, s1, 0.5), Vec3(c0, s0, 0.5)
-        ]
-        # Two triangles making the quad
+        a = 2 * math.pi * i / segments
+        c, s = math.cos(a), math.sin(a)
+        verts.append(Vec3(c, s, -0.5))
+        verts.append(Vec3(c, s, 0.5))
+
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        v0 = i * 2
+        v1 = i * 2 + 1
+        v2 = next_i * 2
+        v3 = next_i * 2 + 1
         tris.extend([
-            base, base+1, base+2,      # Triangle 1
-            base, base+2, base+3       # Triangle 2
+            v0, v1, v2,
+            v1, v3, v2
         ])
-   
+
     m = Mesh(vertices=verts, triangles=tris)
-    m.generate_normals() 
+    m.generate_normals(smooth=True)
     return m
 
 cylinder_mesh = make_z_aligned_cylinder()
 
-# Real CPK Colors (Verified Hex Codes)
+# High-poly procedural sphere for atoms (precompute mesh and smooth normals)
+def make_high_poly_sphere(latitude_bands=32, longitude_bands=32):
+    verts, tris = [], []
+    for lat_number in range(latitude_bands + 1):
+        theta = lat_number * math.pi / latitude_bands
+        sin_theta, cos_theta = math.sin(theta), math.cos(theta)
+
+        for long_number in range(longitude_bands + 1):
+            phi = long_number * 2 * math.pi / longitude_bands
+            sin_phi, cos_phi = math.sin(phi), math.cos(phi)
+            x, y, z = cos_phi * sin_theta, cos_theta, sin_phi * sin_theta
+            verts.append(Vec3(x, y, z) * 0.5)
+
+    for lat_number in range(latitude_bands):
+        for long_number in range(longitude_bands):
+            first = (lat_number * (longitude_bands + 1)) + long_number
+            second = first + longitude_bands + 1
+            if lat_number != 0:
+                tris.extend([first, second, first + 1])
+            if lat_number != (latitude_bands - 1):
+                tris.extend([first + 1, second, second + 1])
+
+    m = Mesh(vertices=verts, triangles=tris)
+    # normals from positions give a smooth, perfect sphere
+    m.normals = [v.normalized() for v in verts]
+    return m
+
+sphere_mesh = make_high_poly_sphere()
+
+# Real CPK Colors 
 ATOM_COLORS = {
-    'C': color.hex('#232323'),
-    'H': color.hex('#33476D'),
-    'O': color.hex("#CD2F24"),
-    'N': color.hex('#BBC6D5'),
-    'S': color.hex('#F1DD38'),
-    'P': color.hex('#67413C'),
-    'F': color.hex('#ADE6D5'),
-    'Cl': color.hex('#1FF01F'),
-    'Br': color.hex('#3A0023'), 
-    'I':  color.hex("#A013E6"),
+    'C': color.hex('#282828'),      # Dark grey, almost black
+    'H': color.hex('#E6E6E6'),      # Pure white/light grey
+    'O': color.hex('#D20000'),      # Deep saturated red
+    'N': color.hex('#3250C8'),      # Deep blue
+    'S': color.hex('#C8C800'),      # Yellow
+    'P': color.hex('#C86400'),      # Orange
+    'F': color.hex('#00C896'),      # Greenish cyan
+    'Cl': color.hex('#00C800'),     # Green
+    'Br': color.hex('#961E1E'),     # Dark red-brown
+    'I':  color.hex('#780096'),     # Purple
 }
+
 
 # Physically Accurate Relative Sizes (Based on Van der Waals radii)
 ATOM_RADII = {
@@ -63,19 +90,15 @@ ATOM_RADII = {
     'Br': 0.72, 'I': 0.78
 }
 
-BOND_THICKNESS = 0.22      # Makes bonds thick and visible
-BOND_LENGTH_MULT = 1.75    # Forces bonds to stretch longer (taller)
+BOND_THICKNESS = 0.22      
+BOND_LENGTH_MULT = 1.75    
 
-# ==========================================
 # CHEMISTRY STATE
-# ==========================================
 current_rwmol = Chem.RWMol()
 current_entities =[]
 molecule_pivot = Entity()
 
-# ==========================================
 # USER INTERFACE
-# ==========================================
 Entity(parent=camera.ui, model='quad', scale=(2, 0.12), position=(0, 0.44, 0.2), color=color.rgba(0,0,0,0.8))
 iupac_text = Text(text=" IUPAC: Loading...", position=(-0.85, 0.48), scale=1.5, color=color.lime)
 smiles_text = Text(text="SMILES: ", position=(-0.85, 0.43), scale=1, color=color.light_gray)
@@ -121,7 +144,6 @@ def try_update(success_msg=""):
         return False
 
 def get_contrast_text_color(bg_color):
-    # Keep labels readable regardless of the dispenser fill color.
     luminance = (0.299 * bg_color.r) + (0.587 * bg_color.g) + (0.114 * bg_color.b)
     return color.black if luminance > 0.55 else color.white
 
@@ -135,6 +157,10 @@ FUNCTIONAL_GROUP_PATTERNS = [
     ("Phenol", "c[OX2H]"),
     ("Amine", "[NX3;H2,H1,H0;!$(NC=O)]"),
     ("Nitrile", "C#N"),
+    ("Sulfide", "C[S]C"),
+    ("Thiol", "CS"),
+    ("Ether", "C[OX2]C"),
+    ("Alkane", "C"),
     ("Alkene", "C=C"),
     ("Alkyne", "C#C"),
     ("Halide", "[F,Cl,Br,I]"),
@@ -142,10 +168,23 @@ FUNCTIONAL_GROUP_PATTERNS = [
 
 def detect_functional_groups(mol):
     found_groups = []
+
+    # Only report Alkane when no Alkene or Alkyne are present.
+    alkane_smarts = None
     for name, smarts in FUNCTIONAL_GROUP_PATTERNS:
+        if name == 'Alkane':
+            alkane_smarts = smarts
+            continue
         pattern = Chem.MolFromSmarts(smarts)
         if pattern is not None and mol.HasSubstructMatch(pattern):
             found_groups.append(name)
+
+    # If neither Alkene nor Alkyne were found, check for Alkane
+    if alkane_smarts is not None and 'Alkene' not in found_groups and 'Alkyne' not in found_groups:
+        alkane_pat = Chem.MolFromSmarts(alkane_smarts)
+        if alkane_pat is not None and mol.HasSubstructMatch(alkane_pat):
+            found_groups.append('Alkane')
+
     return found_groups
 
 def format_functional_groups(groups):
@@ -153,9 +192,7 @@ def format_functional_groups(groups):
         return "Functional Groups: None detected"
     return "Functional Groups: " + ", ".join(groups)
 
-# ==========================================
 # INFINITE DRAG & DROP (DISPENSER SYSTEM)
-# ==========================================
 class DragClone(Entity):
     def __init__(self, symbol, color_code, start_pos):
         super().__init__(parent=camera.ui, model='circle', scale=(0.06, 0.06), position=(start_pos.x, start_pos.y, -0.02), color=color_code)
@@ -225,9 +262,7 @@ ElementDispenser('Cl', 'Cl', ATOM_COLORS['Cl'], 0.13)
 ElementDispenser('Br', 'Br', ATOM_COLORS['Br'], 0.26)
 ElementDispenser('I', 'I', ATOM_COLORS['I'], 0.39)
 
-# ==========================================
 # INTERACTIVE BOND SYSTEM
-# ==========================================
 class InteractiveBond(Entity):
     def __init__(self, idx1, idx2, current_order, **kwargs):
         super().__init__(**kwargs)
@@ -254,15 +289,14 @@ def get_bond_offsets(p1, p2, order):
     direction = (p2 - p1).normalized()
     perp = direction.cross(Vec3(0, 0, 1)).normalized()
     if perp.length() < 0.1: perp = direction.cross(Vec3(0, 1, 0)).normalized()
-    gap = 0.22 # Gap width for multiple cylinders
+    gap = 0.22 # 
 
     if order == 2: return[perp * (gap*0.9), -perp * (gap*0.9)]
     if order == 3: return [Vec3(0,0,0), perp * (gap*1.5), -perp * (gap*1.5)]
     return [Vec3(0,0,0)]
 
-# ==========================================
+
 # FLAWLESS 3D RENDERING ENGINE
-# ==========================================
 def render_molecule():
     for e in current_entities: destroy(e)
     current_entities.clear()
@@ -285,7 +319,7 @@ def render_molecule():
         pos = Vec3(*conf.GetAtomPosition(i)) * BOND_LENGTH_MULT
         rad = ATOM_RADII.get(sym, 0.5)
         
-        ent = Entity(model='sphere', color=ATOM_COLORS.get(sym, color.gray), parent=molecule_pivot, position=pos)
+        ent = Entity(model=copy(sphere_mesh), shader=lit_with_shadows_shader, color=ATOM_COLORS.get(sym, color.gray), parent=molecule_pivot, position=pos)
         ent.atom_idx = i 
         ent.scale = 0 
         ent.animate_scale(rad * 2, duration=0.3, curve=curve.out_back)
@@ -312,8 +346,8 @@ def render_molecule():
             for seg_start, seg_end, col in[(start_offset, mid_offset, c1), (mid_offset, end_offset, c2)]:
                 dist = (seg_end - seg_start).length()
                 
-                # Z-Aligned Visual Cylinder
-                b_vis = Entity(model=copy(cylinder_mesh), color=col, parent=molecule_pivot, double_sided=True)
+                # Z-Aligned Visual Cylinder (use lit shader for glossy/plastic look)
+                b_vis = Entity(model=copy(cylinder_mesh), shader=lit_with_shadows_shader, color=col, parent=molecule_pivot, double_sided=True)
                 b_vis.position = (seg_start + seg_end) * 0.5
                 b_vis.scale = Vec3(visual_thickness, visual_thickness, dist) # Scaled on Z
                 b_vis.look_at(seg_end)
@@ -329,23 +363,20 @@ def render_molecule():
     # 3. Render Hydrogens
     for i in range(current_rwmol.GetNumAtoms(), mol_3d.GetNumAtoms()):
         pos = Vec3(*conf.GetAtomPosition(i)) * BOND_LENGTH_MULT
-        ent = Entity(model='sphere', color=ATOM_COLORS['H'], position=pos, parent=molecule_pivot, scale=ATOM_RADII['H']*2)
+        ent = Entity(model=copy(sphere_mesh), shader=lit_with_shadows_shader, color=ATOM_COLORS['H'], position=pos, parent=molecule_pivot, scale=ATOM_RADII['H']*2)
         current_entities.append(ent)
-        
+
         neighbor_idx = mol_3d.GetAtomWithIdx(i).GetNeighbors()[0].GetIdx()
         p_neighbor = Vec3(*conf.GetAtomPosition(neighbor_idx)) * BOND_LENGTH_MULT
         c_heavy = ATOM_COLORS.get(mol_3d.GetAtomWithIdx(neighbor_idx).GetSymbol())
         mid = (pos + p_neighbor) * 0.5
-        
-        b1 = Entity(model=copy(cylinder_mesh), color=ATOM_COLORS['H'], parent=molecule_pivot, position=(pos+mid)*0.5, scale=(BOND_THICKNESS, BOND_THICKNESS, (mid-pos).length()))
+        b1 = Entity(model=copy(cylinder_mesh), shader=lit_with_shadows_shader, color=ATOM_COLORS['H'], parent=molecule_pivot, position=(pos+mid)*0.5, scale=(BOND_THICKNESS, BOND_THICKNESS, (mid-pos).length()), double_sided=True)
         b1.look_at(mid)
-        b2 = Entity(model=copy(cylinder_mesh), color=c_heavy, parent=molecule_pivot, position=(mid+p_neighbor)*0.5, scale=(BOND_THICKNESS, BOND_THICKNESS, (p_neighbor-mid).length()))
+        b2 = Entity(model=copy(cylinder_mesh), shader=lit_with_shadows_shader, color=c_heavy, parent=molecule_pivot, position=(mid+p_neighbor)*0.5, scale=(BOND_THICKNESS, BOND_THICKNESS, (p_neighbor-mid).length()), double_sided=True)
         b2.look_at(p_neighbor)
         current_entities.extend([b1, b2])
 
-# ==========================================
 # CONTROLS & ANIMATION
-# ==========================================
 def reset_mol():
     global current_rwmol
     current_rwmol = Chem.RWMol()
