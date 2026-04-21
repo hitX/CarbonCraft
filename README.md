@@ -79,7 +79,7 @@ If launch is successful, a window titled **CarbonCraft** should appear.
 
 ## Contributing
 
-Contributions are welcome during pre-release.
+Contributions are welcome.
 
 ### Workflow
 
