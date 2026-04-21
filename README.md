@@ -4,9 +4,9 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Pre--release-orange)]
+[![Status](https://img.shields.io/badge/Status-First--release-orange)]
 
-This project is open source and currently in pre-release.
+This project is open source.
 
 ## Overview
 
@@ -20,18 +20,12 @@ CarbonCraft is a visual molecule builder that lets you assemble structures in a 
 - Fetch IUPAC names from PubChem when online
 - Render atoms and bonds in a stylized 3D interface
 
-## Pre-Release Notes
-
-- Controls, visuals, and behavior may change before a stable release
-- Some molecules may fail sanitization or 3D embedding depending on valency and geometry constraints
-- Error handling and test coverage are still evolving
-
 ## Download
 
 ### Clone with Git
 
 ```bash
-git clone https://github.com/<your-org-or-user>/CarbonCraft.git
+git clone https://github.com/hitX/CarbonCraft.git
 cd CarbonCraft
 ```
 
